@@ -2,7 +2,7 @@
 
 Bayesian separation of thermal and non-thermal radio continuum emission from multi-frequency FITS images. Emission is modelled as a two-component spectral energy distribution (SED): free-free (thermal) and synchrotron (non-thermal). Posterior distributions for each component are sampled per hexagonal aperture using an affine-invariant ensemble MCMC sampler.
 
-This is implementation is based on the work presented in [Westcott et al. (2018)](https://academic.oup.com/mnras/article/475/4/5116/4801202).
+This implementation is based on the work presented in [Westcott et al. (2018)](https://academic.oup.com/mnras/article/475/4/5116/4801202).
 
 ---
 
