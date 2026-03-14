@@ -8,7 +8,7 @@ using AffineInvariantMCMC
 using CairoMakie
 using PairPlots
 using ProgressMeter
-using SpecialFunction
+using SpecialFunctions
 
 struct DataCube
     data::Array{Float64,3}
