@@ -33,6 +33,6 @@ function lnpost(params::AbstractVector, ha_meas::Float64, ha_uncert::Float64,
                 freq::AbstractVector, data::AbstractVector,
                 data_err::AbstractVector)::Float64
     lp = lnprior(params, ha_meas, ha_uncert)
-    !isinfinite(lp) && return lp
+    !isfinite(lp) && return lp
     return lp + lnlike(params, freq, data, data_err)
 end
