@@ -281,7 +281,7 @@ output_dir/
 The simplest way to run everything. `sep_bayes` loads data, runs MCMC, and produces all plots and maps.
 
 ```julia
-using SepBayes
+using RadioSep
 
 noise = Dict(
     "C.fits"  => 4.7e-6,
@@ -309,7 +309,7 @@ The returned objects (`dc`, `ha`, `hg`, `fd`) allow further interactive explorat
 Run each stage individually for full control. This is useful when iterating on MCMC settings or the masking threshold without reloading data.
 
 ```julia
-using SepBayes
+using RadioSep
 
 noise = Dict(
     "C.fits"  => 4.7e-6,
@@ -365,7 +365,7 @@ all_plots(fd, dc, hg, samples, outdir;
 If the MCMC has already been run and only the plots need regenerating (e.g. after adjusting thresholds), reload the data structures and call the plotting functions directly against the existing `samples.h5`.
 
 ```julia
-using SepBayes
+using RadioSep
 
 noise = Dict(
     "C.fits"  => 4.7e-6,
@@ -409,7 +409,7 @@ plot_corner(samples, outdir;             quality_mask=qmask)
 Use `labeled_map.png` to identify which bin index covers a region of interest, then call `query_bin` to retrieve the full posterior summary.
 
 ```julia
-using SepBayes
+using RadioSep
 
 # (assume dc, ha, hg, fd already loaded as above)
 
