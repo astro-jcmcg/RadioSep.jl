@@ -58,6 +58,7 @@ include("postprocess.jl")
 include("plotting.jl")
 
 export DataCube, HaData, HexGrid, FluxData
+export PowerLaw, CurvedPowerLaw, ffa, BrokenPowerLaw
 export import_datacube, load_ha, beam_correction_factor
 export gen_mask
 export build_hex_grid, find_gridsize
@@ -73,14 +74,15 @@ export plot_labeled_map, query_bin
 function complete_run(filelocation::String, noise_dict::Dict{String,Float64},
     output_dir::String;
     threshold::Float64=5.0,
-    fill_factor::Float64=0.5)
-    dc = import_datacube(filelocation, noise_dict)
-    ha = load_ha(filelocation, noise_dict["Ha.fits"])
+    fill_factor::Float64=0.5,
+    model::Union{PowerLaw,CurvedPowerLaw,ffa,BrokenPowerLaw}=PowerLaw())
+    dc   = import_datacube(filelocation, noise_dict)
+    ha   = load_ha(filelocation, noise_dict["Ha.fits"])
     mask = gen_mask(dc; threshold)
-    gs = find_gridsize(dc.header)
-    hg = build_hex_grid(mask, gs; fill_factor)
-    fd = recover_fluxes(dc, ha, hg, mask)
-    run_mcmc_hex(fd, dc.freq; output_path=output_dir)
+    gs   = find_gridsize(dc.header)
+    hg   = build_hex_grid(mask, gs; fill_factor)
+    fd   = recover_fluxes(dc, ha, hg, mask)
+    run_mcmc_hex(fd, dc.freq; model, output_path=output_dir)
     return dc, ha, hg, fd
 end
 
@@ -93,22 +95,28 @@ function sep_bayes(filelocation::String, noise_dict::Dict{String,Float64},
     n_walkers::Int=100,
     n_steps::Int=2000,
     n_burnin::Int=400,
+    model::Union{PowerLaw,CurvedPowerLaw,ffa,BrokenPowerLaw}=PowerLaw(),
     mask_poor_bins::Bool=true,
     alpha_width_threshold::Float64=0.5,
-    tfrac_width_threshold::Float64=0.4)
+    tfrac_width_threshold::Float64=0.4,
+    beta_width_threshold::Float64=0.8,
+    tau_width_threshold::Float64=1.0,
+    nu_b_log_width_threshold::Float64=2.0,
+    T_e::Float64=8000.0)
 
-    dc = import_datacube(filelocation, noise_dict)
-    ha = load_ha(filelocation, noise_dict["Ha.fits"])
+    dc   = import_datacube(filelocation, noise_dict)
+    ha   = load_ha(filelocation, noise_dict["Ha.fits"])
     mask = gen_mask(dc; threshold)
-    gs = find_gridsize(dc.header)
-    hg = build_hex_grid(mask, gs; fill_factor)
-    fd = recover_fluxes(dc, ha, hg, mask)
+    gs   = find_gridsize(dc.header)
+    hg   = build_hex_grid(mask, gs; fill_factor)
+    fd   = recover_fluxes(dc, ha, hg, mask)
 
     samples_file = joinpath(output_dir, "samples.h5")
-    run_mcmc_hex(fd, dc.freq; n_walkers, n_steps, n_burnin, output_path=output_dir)
+    run_mcmc_hex(fd, dc.freq; n_walkers, n_steps, n_burnin, model, output_path=output_dir)
 
     all_plots(fd, dc, hg, samples_file, output_dir;
-        mask_poor_bins, alpha_width_threshold, tfrac_width_threshold)
+        mask_poor_bins, alpha_width_threshold, tfrac_width_threshold,
+        beta_width_threshold, tau_width_threshold, nu_b_log_width_threshold, T_e)
 
     return dc, ha, hg, fd
 end

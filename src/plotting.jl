@@ -1,5 +1,6 @@
 using CairoMakie
 using PairPlots
+using LaTeXStrings
 using HDF5
 using Statistics
 using Printf
@@ -13,53 +14,108 @@ end
 
 thermal(therm_norm, freq) = therm_norm .* (freq ./ 1e9) .^ (-0.1)
 non_thermal(nt_norm, spec, freq) = nt_norm .* (freq ./ 1e9) .^ spec
+function non_thermal_curved(nt_norm, spec, beta, freq)
+    r = log.(freq ./ 1e9)
+    nt_norm .* exp.((spec .+ beta .* r) .* r)
+end
+function non_thermal_abs(nt_norm, spec, tau0, freq)
+    ratio = freq ./ 1e9
+    nt_norm .* ratio .^ spec .* exp.(-tau0 .* ratio .^ (-2.1))
+end
+function non_thermal_broken(nt_norm, spec, nu_b, freq)
+    map(freq) do f
+        f <= nu_b ?
+            nt_norm * (f / 1e9)^spec :
+            nt_norm * (nu_b / 1e9)^spec * (f / nu_b)^(spec - 0.5)
+    end
+end
 
 function plot_sed(fd::FluxData, freq::AbstractVector, samples_file::String, output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
-    sed_dir = joinpath(output_dir, "SED")
+    dataset    = _read_samples(samples_file)
+    model_str  = _read_model_attr(samples_file)
+    n_hex      = size(dataset, 1)
+    is_curved  = model_str == "CurvedPowerLaw"
+    is_ffa     = model_str == "ffa"
+    is_bpl     = model_str == "BrokenPowerLaw"
+    sed_dir    = joinpath(output_dir, "SED")
     mkpath(sed_dir)
 
-    freq_range = 10 .^ range(8.5, 11.0; length=200)
+    x_lo = minimum(freq) * 0.3
+    x_hi = maximum(freq) * 3.0
+    freq_range = 10 .^ range(log10(x_lo), log10(x_hi); length=200)
+
+    all_lo = [fd.dmatrix[i, j] - fd.dnoisematrix[i, j]
+              for i in 1:n_hex, j in eachindex(freq)
+              if isfinite(fd.dmatrix[i, j]) && fd.dmatrix[i, j] > 0]
+    all_hi = [fd.dmatrix[i, j] + fd.dnoisematrix[i, j]
+              for i in 1:n_hex, j in eachindex(freq)
+              if isfinite(fd.dmatrix[i, j])]
+    ha_vals = filter(>(0), fd.dHa)
+    y_lo = isempty(all_lo) ? 1e-10 : max(minimum(all_lo), 1e-10) * 0.3
+    y_hi = isempty(all_hi) ? 1e-5  : max(maximum(all_hi), maximum(ha_vals; init=0.0)) * 3.0
 
     @showprogress "Plotting SEDs: " for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
         samp = dataset[i, :, :]
 
         fig = Figure()
-        ax = Axis(fig[1, 1];
+        ax  = Axis(fig[1, 1];
             xlabel="Frequency (Hz)", ylabel="Flux Density (Jy)",
             xscale=log10, yscale=log10,
-            limits=((10^8.5, 10^11), nothing))
+            limits=(x_lo, x_hi, y_lo, y_hi))
 
-        errorbars!(ax, freq, fd.dmatrix[i, :], fd.dnoisematrix[i, :];
-            color=:black)
+        errorbars!(ax, freq, fd.dmatrix[i, :], fd.dnoisematrix[i, :]; color=:black)
         scatter!(ax, freq, fd.dmatrix[i, :]; color=:black)
 
         errorbars!(ax, [1e9], [fd.dHa[i]], [0.5 * fd.dHa[i]];
             color=:red, whiskerwidth=8)
         scatter!(ax, [1e9], [fd.dHa[i]]; color=:red)
 
-        best_T = median(samp[:, 1])
-        best_nT = median(samp[:, 2])
+        best_T    = median(samp[:, 1])
+        best_nT   = median(samp[:, 2])
         best_spec = median(samp[:, 3])
-        lines!(ax, freq_range, sed.(best_T, best_nT, best_spec, freq_range);
-            color=:black)
+        if is_curved
+            best_p4 = median(samp[:, 4])
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_spec, best_p4, freq_range, Ref(CurvedPowerLaw()));
+                color=:black)
+        elseif is_ffa
+            best_tau0 = median(samp[:, 4])
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_spec, best_tau0, freq_range, Ref(ffa()));
+                color=:black)
+        elseif is_bpl
+            best_nu_b = median(samp[:, 4])
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_spec, best_nu_b, freq_range, Ref(BrokenPowerLaw()));
+                color=:black)
+        else
+            lines!(ax, freq_range, sed.(best_T, best_nT, best_spec, freq_range); color=:black)
+        end
 
         idx = rand(1:size(samp, 1), 250)
         for j in idx
             samp[j, 1] > 0 && lines!(ax, freq_range, thermal(samp[j, 1], freq_range);
                 color=(:red, 0.0075), linewidth=10)
-            samp[j, 2] > 0 && lines!(ax, freq_range,
-                non_thermal(samp[j, 2], samp[j, 3], freq_range);
-                color=(:blue, 0.0075), linewidth=10)
+            if is_curved
+                samp[j, 2] > 0 && lines!(ax, freq_range,
+                    non_thermal_curved(samp[j, 2], samp[j, 3], samp[j, 4], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            elseif is_ffa
+                samp[j, 2] > 0 && lines!(ax, freq_range,
+                    non_thermal_abs(samp[j, 2], samp[j, 3], samp[j, 4], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            elseif is_bpl
+                samp[j, 2] > 0 && lines!(ax, freq_range,
+                    non_thermal_broken(samp[j, 2], samp[j, 3], samp[j, 4], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            else
+                samp[j, 2] > 0 && lines!(ax, freq_range,
+                    non_thermal(samp[j, 2], samp[j, 3], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            end
         end
-
-        ymin = minimum(filter(>(0), fd.dmatrix[i, :] .- fd.dnoisematrix[i, :]);
-            init=1e-10)
-        ymax = maximum(fd.dmatrix[i, :] .+ fd.dnoisematrix[i, :]; init=1e-5)
-        ylims!(ax, ymin * 0.5, ymax * 2)
 
         save(joinpath(sed_dir, "$i.png"), fig)
         empty!(fig)
@@ -69,20 +125,41 @@ end
 
 function plot_corner(samples_file::String, output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
-    post_dir = joinpath(output_dir, "posterior")
+    dataset   = _read_samples(samples_file)
+    model_str = _read_model_attr(samples_file)
+    n_hex     = size(dataset, 1)
+    is_curved = model_str == "CurvedPowerLaw"
+    is_ffa    = model_str == "ffa"
+    is_bpl    = model_str == "BrokenPowerLaw"
+    post_dir  = joinpath(output_dir, "posterior")
     mkpath(post_dir)
+
+    pl_labels   = Dict(:A_prime => L"A'", :B_prime => L"B'", :alpha => L"\alpha")
+    cpl_labels  = merge(pl_labels, Dict(:beta  => L"\beta"))
+    ffa_labels  = merge(pl_labels, Dict(:tau0  => L"\tau_0"))
+    bpl_labels  = merge(pl_labels, Dict(:nu_b_GHz => L"\nu_b\,(\mathrm{GHz})"))
 
     @showprogress "Plotting corners: " for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
-        samp = dataset[i, :, 1:3]
-        tbl = (A_prime=samp[:, 1], B_prime=samp[:, 2], alpha=samp[:, 3])
+        tbl, labels = if is_curved
+            s = dataset[i, :, 1:4]
+            (A_prime=s[:, 1], B_prime=s[:, 2], alpha=s[:, 3], beta=s[:, 4]), cpl_labels
+        elseif is_ffa
+            s = dataset[i, :, 1:4]
+            (A_prime=s[:, 1], B_prime=s[:, 2], alpha=s[:, 3], tau0=s[:, 4]), ffa_labels
+        elseif is_bpl
+            s = dataset[i, :, 1:4]
+            (A_prime=s[:, 1], B_prime=s[:, 2], alpha=s[:, 3], nu_b_GHz=s[:, 4] ./ 1e9), bpl_labels
+        else
+            s = dataset[i, :, 1:3]
+            (A_prime=s[:, 1], B_prime=s[:, 2], alpha=s[:, 3]), pl_labels
+        end
         fig = Figure()
         pairplot(fig[1, 1],
             PairPlots.Series(tbl) => (PairPlots.Scatter(),
                 PairPlots.Contourf(),
-                PairPlots.MarginDensity()))
+                PairPlots.MarginDensity());
+            labels)
         save(joinpath(post_dir, "$i.png"), fig)
         empty!(fig)
         GC.gc()
@@ -91,51 +168,46 @@ end
 
 function spec_vs_frac(samples_file::String, output_dir::String)
     dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
+    n_hex   = size(dataset, 1)
 
-    spec = zeros(n_hex, 3)
+    spec  = zeros(n_hex, 3)
     tfrac = zeros(n_hex, 3)
     for i in 1:n_hex
-        samp = dataset[i, :, :]
-        q = quantile(samp[:, 3], [0.16, 0.50, 0.84])
+        samp    = dataset[i, :, :]
+        q       = quantile(samp[:, 3], [0.16, 0.50, 0.84])
         spec[i, :] = q
         p16, p50, p84 = thermal_frac_percentiles(samp)
         tfrac[i, :] = [p16, p50, p84]
     end
 
     fig = Figure()
-    ax = Axis(fig[1, 1];
-        xlabel="Thermal Fraction", ylabel="Recovered Spectral Index")
+    ax  = Axis(fig[1, 1]; xlabel="Thermal Fraction", ylabel="Recovered Spectral Index")
     errorbars!(ax, tfrac[:, 2], spec[:, 2],
-        tfrac[:, 2] .- tfrac[:, 1],
-        tfrac[:, 3] .- tfrac[:, 2];
-        direction=:x)
+        tfrac[:, 2] .- tfrac[:, 1], tfrac[:, 3] .- tfrac[:, 2]; direction=:x)
     errorbars!(ax, tfrac[:, 2], spec[:, 2],
-        spec[:, 2] .- spec[:, 1],
-        spec[:, 3] .- spec[:, 2])
+        spec[:, 2] .- spec[:, 1], spec[:, 3] .- spec[:, 2])
     scatter!(ax, tfrac[:, 2], spec[:, 2])
     save(joinpath(output_dir, "spec_vs_frac.png"), fig)
 end
 
 function ext_vs_ha(samples_file::String, output_dir::String)
     dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
+    n_hex   = size(dataset, 1)
 
     ext = zeros(n_hex, 3)
-    ha = zeros(n_hex, 3)
+    ha  = zeros(n_hex, 3)
     for i in 1:n_hex
-        samp = dataset[i, :, :]
-        ext_samp = filter(isfinite, extinction_calc(samp))
-        ext[i, :] = isempty(ext_samp) ? [NaN, NaN, NaN] :
-                    quantile(ext_samp, [0.16, 0.50, 0.84])
-        ha_fin = filter(isfinite, samp[:, 4])
-        ha[i, :] = isempty(ha_fin) ? [NaN, NaN, NaN] :
-                   quantile(ha_fin, [0.16, 0.50, 0.84])
+        samp    = dataset[i, :, :]
+        ext_fin = filter(isfinite, extinction_calc(samp))
+        ext[i, :] = isempty(ext_fin) ? [NaN, NaN, NaN] :
+                    quantile(ext_fin, [0.16, 0.50, 0.84])
+        ha_fin    = filter(isfinite, samp[:, end])
+        ha[i, :]  = isempty(ha_fin) ? [NaN, NaN, NaN] :
+                    quantile(ha_fin, [0.16, 0.50, 0.84])
     end
 
     fig = Figure()
-    ax = Axis(fig[1, 1];
-        xlabel="Hα Thermal Emission (Jy)", ylabel="Recovered E(B-V)")
+    ax  = Axis(fig[1, 1]; xlabel="Hα Thermal Emission (Jy)", ylabel="Recovered E(B-V)")
     errorbars!(ax, ha[:, 2], ext[:, 2],
         ha[:, 2] .- ha[:, 1], ha[:, 3] .- ha[:, 2]; direction=:x)
     errorbars!(ax, ha[:, 2], ext[:, 2],
@@ -146,54 +218,98 @@ end
 
 function plot_hex_maps(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
+    T_e::Float64=8000.0,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
-    maps_dir = joinpath(output_dir, "maps")
+    dataset   = _read_samples(samples_file)
+    model_str = _read_model_attr(samples_file)
+    n_hex     = size(dataset, 1)
+    is_curved = model_str == "CurvedPowerLaw"
+    is_ffa    = model_str == "ffa"
+    is_bpl    = model_str == "BrokenPowerLaw"
+    maps_dir  = joinpath(output_dir, "maps")
     mkpath(maps_dir)
 
     ny = dc.header["NAXIS2"]
     nx = dc.header["NAXIS1"]
 
-    T_map = fill(NaN, ny, nx)
-    T_err = fill(NaN, ny, nx)
-    nT_map = fill(NaN, ny, nx)
-    nT_err = fill(NaN, ny, nx)
-    spec_map = fill(NaN, ny, nx)
-    spec_err = fill(NaN, ny, nx)
-    tfrac_map = fill(NaN, ny, nx)
-    tfrac_err = fill(NaN, ny, nx)
+    T_map      = fill(NaN, ny, nx)
+    T_err      = fill(NaN, ny, nx)
+    nT_map     = fill(NaN, ny, nx)
+    nT_err     = fill(NaN, ny, nx)
+    spec_map   = fill(NaN, ny, nx)
+    spec_err   = fill(NaN, ny, nx)
+    tfrac_map  = fill(NaN, ny, nx)
+    tfrac_err  = fill(NaN, ny, nx)
+    beta_map   = is_curved ? fill(NaN, ny, nx) : nothing
+    beta_err   = is_curved ? fill(NaN, ny, nx) : nothing
+    tau_map    = is_ffa    ? fill(NaN, ny, nx) : nothing
+    tau_err    = is_ffa    ? fill(NaN, ny, nx) : nothing
+    em_map     = is_ffa    ? fill(NaN, ny, nx) : nothing
+    em_err     = is_ffa    ? fill(NaN, ny, nx) : nothing
+    nu_b_map   = is_bpl    ? fill(NaN, ny, nx) : nothing
+    nu_b_err   = is_bpl    ? fill(NaN, ny, nx) : nothing
 
     for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
-        samp = dataset[i, :, :]
+        samp  = dataset[i, :, :]
 
-        qT = quantile(samp[:, 1], [0.16, 0.50, 0.84])
-        qnT = quantile(samp[:, 2], [0.16, 0.50, 0.84])
+        qT    = quantile(samp[:, 1], [0.16, 0.50, 0.84])
+        qnT   = quantile(samp[:, 2], [0.16, 0.50, 0.84])
         qspec = quantile(samp[:, 3], [0.16, 0.50, 0.84])
         tf16, tf50, tf84 = thermal_frac_percentiles(samp)
 
+        if is_curved
+            qbeta = quantile(samp[:, 4], [0.16, 0.50, 0.84])
+        elseif is_ffa
+            tau16, tau50, tau84 = tau0_percentiles(samp)
+            em_samples = emission_measure_calc(filter(isfinite, samp[:, 4]); T_e)
+            qem = isempty(em_samples) ? [NaN, NaN, NaN] :
+                  quantile(em_samples, [0.16, 0.50, 0.84])
+        elseif is_bpl
+            qnu_b = quantile(filter(isfinite, samp[:, 4]), [0.16, 0.50, 0.84])
+        end
+
         for px in hg.pixel_members[i]
-            T_map[px] = qT[2]
-            T_err[px] = (qT[3] - qT[1]) / 2
-            nT_map[px] = qnT[2]
-            nT_err[px] = (qnT[3] - qnT[1]) / 2
-            spec_map[px] = qspec[2]
-            spec_err[px] = (qspec[3] - qspec[1]) / 2
-            tfrac_map[px] = tf50
-            tfrac_err[px] = (tf84 - tf16) / 2
+            T_map[px]     = qT[2];    T_err[px]    = (qT[3]    - qT[1])    / 2
+            nT_map[px]    = qnT[2];   nT_err[px]   = (qnT[3]   - qnT[1])   / 2
+            spec_map[px]  = qspec[2]; spec_err[px] = (qspec[3]  - qspec[1]) / 2
+            tfrac_map[px] = tf50;     tfrac_err[px] = (tf84 - tf16) / 2
+            if is_curved
+                beta_map[px] = qbeta[2]
+                beta_err[px] = (qbeta[3] - qbeta[1]) / 2
+            elseif is_ffa
+                tau_map[px] = tau50
+                tau_err[px] = (tau84 - tau16) / 2
+                em_map[px]  = qem[2]
+                em_err[px]  = (qem[3] - qem[1]) / 2
+            elseif is_bpl
+                nu_b_map[px] = qnu_b[2]
+                nu_b_err[px] = (qnu_b[3] - qnu_b[1]) / 2
+            end
         end
     end
 
     hdr = dc.header
-    _write_fits_map(joinpath(maps_dir, "T.fits"), T_map, hdr)
-    _write_fits_map(joinpath(maps_dir, "T_err.fits"), T_err, hdr)
-    _write_fits_map(joinpath(maps_dir, "nT.fits"), nT_map, hdr)
-    _write_fits_map(joinpath(maps_dir, "nT_err.fits"), nT_err, hdr)
-    _write_fits_map(joinpath(maps_dir, "spec.fits"), spec_map, hdr)
-    _write_fits_map(joinpath(maps_dir, "spec_err.fits"), spec_err, hdr)
-    _write_fits_map(joinpath(maps_dir, "tfrac.fits"), tfrac_map, hdr)
+    _write_fits_map(joinpath(maps_dir, "T.fits"),         T_map,     hdr)
+    _write_fits_map(joinpath(maps_dir, "T_err.fits"),     T_err,     hdr)
+    _write_fits_map(joinpath(maps_dir, "nT.fits"),        nT_map,    hdr)
+    _write_fits_map(joinpath(maps_dir, "nT_err.fits"),    nT_err,    hdr)
+    _write_fits_map(joinpath(maps_dir, "spec.fits"),      spec_map,  hdr)
+    _write_fits_map(joinpath(maps_dir, "spec_err.fits"),  spec_err,  hdr)
+    _write_fits_map(joinpath(maps_dir, "tfrac.fits"),     tfrac_map, hdr)
     _write_fits_map(joinpath(maps_dir, "tfrac_err.fits"), tfrac_err, hdr)
+    if is_curved
+        _write_fits_map(joinpath(maps_dir, "beta.fits"),     beta_map, hdr)
+        _write_fits_map(joinpath(maps_dir, "beta_err.fits"), beta_err, hdr)
+    elseif is_ffa
+        _write_fits_map(joinpath(maps_dir, "tau.fits"),     tau_map, hdr)
+        _write_fits_map(joinpath(maps_dir, "tau_err.fits"), tau_err, hdr)
+        _write_fits_map(joinpath(maps_dir, "EM.fits"),      em_map,  hdr)
+        _write_fits_map(joinpath(maps_dir, "EM_err.fits"),  em_err,  hdr)
+    elseif is_bpl
+        _write_fits_map(joinpath(maps_dir, "nu_b.fits"),     nu_b_map, hdr)
+        _write_fits_map(joinpath(maps_dir, "nu_b_err.fits"), nu_b_err, hdr)
+    end
 end
 
 function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
@@ -203,13 +319,13 @@ function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
     scale_height::Float64=0.1,
     disk_inclination::Float64=33.0,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
+    dataset  = _read_samples(samples_file)
+    n_hex    = size(dataset, 1)
     maps_dir = joinpath(output_dir, "maps")
     mkpath(maps_dir)
 
-    ny = dc.header["NAXIS2"]
-    nx = dc.header["NAXIS1"]
+    ny      = dc.header["NAXIS2"]
+    nx      = dc.header["NAXIS1"]
     mag_map = fill(NaN, ny, nx)
     mag_err = fill(NaN, ny, nx)
 
@@ -218,7 +334,7 @@ function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
     for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
         nt_samples = dataset[i, :, 2]
-        B_samples = bfield_revised(nt_samples, fd.area[i], freq_ghz,
+        B_samples  = bfield_revised(nt_samples, fd.area[i], freq_ghz,
             av_spec, k, scale_height, disk_inclination) .* 1e6
         qB = quantile(B_samples, [0.16, 0.50, 0.84])
 
@@ -228,30 +344,28 @@ function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
         end
     end
 
-    _write_fits_map(joinpath(maps_dir, "mag_eq.fits"), mag_map, dc.header)
+    _write_fits_map(joinpath(maps_dir, "mag_eq.fits"),     mag_map, dc.header)
     _write_fits_map(joinpath(maps_dir, "mag_eq_err.fits"), mag_err, dc.header)
 end
 
 function extinction_map(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
+    dataset  = _read_samples(samples_file)
+    n_hex    = size(dataset, 1)
     maps_dir = joinpath(output_dir, "maps")
     mkpath(maps_dir)
 
-    ny = dc.header["NAXIS2"]
-    nx = dc.header["NAXIS1"]
+    ny      = dc.header["NAXIS2"]
+    nx      = dc.header["NAXIS1"]
     ext_map = fill(NaN, ny, nx)
     ext_err = fill(NaN, ny, nx)
 
     for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
-        samp = dataset[i, :, :]
+        samp    = dataset[i, :, :]
         ext_fin = filter(isfinite, extinction_calc(samp))
-        if isempty(ext_fin)
-            continue
-        end
+        isempty(ext_fin) && continue
         qE = quantile(ext_fin, [0.16, 0.50, 0.84])
         for px in hg.pixel_members[i]
             ext_map[px] = qE[2]
@@ -259,7 +373,7 @@ function extinction_map(samples_file::String, dc::DataCube, hg::HexGrid,
         end
     end
 
-    _write_fits_map(joinpath(maps_dir, "ext.fits"), ext_map, dc.header)
+    _write_fits_map(joinpath(maps_dir, "ext.fits"),     ext_map, dc.header)
     _write_fits_map(joinpath(maps_dir, "ext_err.fits"), ext_err, dc.header)
 end
 
@@ -267,16 +381,19 @@ function plot_labeled_map(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
     parameter::Symbol=:tfrac,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset = _read_samples(samples_file)
-    n_hex = size(dataset, 1)
-    ny = dc.header["NAXIS2"]
-    nx = dc.header["NAXIS1"]
+    dataset   = _read_samples(samples_file)
+    model_str = _read_model_attr(samples_file)
+    n_hex     = size(dataset, 1)
+    is_ffa    = model_str == "ffa"
+    is_bpl    = model_str == "BrokenPowerLaw"
+    ny        = dc.header["NAXIS2"]
+    nx        = dc.header["NAXIS1"]
 
     pmap = fill(NaN, ny, nx)
     for i in 1:n_hex
         quality_mask !== nothing && !quality_mask[i] && continue
         samp = dataset[i, :, :]
-        val = if parameter == :tfrac
+        val  = if parameter == :tfrac
             thermal_frac_median(samp)
         elseif parameter == :spec
             median(samp[:, 3])
@@ -284,8 +401,18 @@ function plot_labeled_map(samples_file::String, dc::DataCube, hg::HexGrid,
             median(samp[:, 1])
         elseif parameter == :nontherm
             median(samp[:, 2])
+        elseif parameter == :beta
+            model_str == "CurvedPowerLaw" || error("Beta map requires CurvedPowerLaw model")
+            median(samp[:, 4])
+        elseif parameter == :tau
+            is_ffa || error("Tau map requires ffa model")
+            _, tau50, _ = tau0_percentiles(samp)
+            tau50
+        elseif parameter == :nu_b
+            is_bpl || error("nu_b map requires BrokenPowerLaw model")
+            median(filter(isfinite, samp[:, 4]))
         else
-            error("Unknown parameter $parameter. Choose: :tfrac, :spec, :therm, :nontherm")
+            error("Unknown parameter $parameter. Choose: :tfrac, :spec, :therm, :nontherm, :beta, :tau, :nu_b")
         end
         for px in hg.pixel_members[i]
             pmap[px] = val
@@ -293,7 +420,7 @@ function plot_labeled_map(samples_file::String, dc::DataCube, hg::HexGrid,
     end
 
     fig = Figure(size=(700, 700))
-    ax = Axis(fig[1, 1]; aspect=DataAspect(),
+    ax  = Axis(fig[1, 1]; aspect=DataAspect(),
         title="Bin labels — parameter: $parameter",
         xlabel="pixel col", ylabel="pixel row")
 
@@ -316,10 +443,14 @@ function query_bin(bin_idx::Int, samples_file::String, fd::FluxData,
     dataset = h5open(samples_file, "r") do hdf
         read(hdf, "samples")
     end
-    n_hex = size(dataset, 1)
+    model_str = _read_model_attr(samples_file)
+    n_hex     = size(dataset, 1)
     1 <= bin_idx <= n_hex || error("bin_idx $bin_idx out of range 1:$n_hex")
 
-    samp = dataset[bin_idx, :, :]
+    samp      = dataset[bin_idx, :, :]
+    is_curved = model_str == "CurvedPowerLaw"
+    is_ffa    = model_str == "ffa"
+    is_bpl    = model_str == "BrokenPowerLaw"
 
     function pct(v)
         vf = filter(isfinite, v)
@@ -328,17 +459,20 @@ function query_bin(bin_idx::Int, samples_file::String, fd::FluxData,
         return (q[1], q[2], q[3])
     end
 
-    T = pct(samp[:, 1])
-    nT = pct(samp[:, 2])
+    T     = pct(samp[:, 1])
+    nT    = pct(samp[:, 2])
     alpha = pct(samp[:, 3])
-    Ha = pct(samp[:, 4])
+    beta  = is_curved ? pct(samp[:, 4]) : nothing
+    tau0  = is_ffa    ? pct(samp[:, 4]) : nothing
+    nu_b  = is_bpl    ? pct(samp[:, 4]) : nothing
+    Ha    = pct(samp[:, end])
     tf16, tf50, tf84 = thermal_frac_percentiles(samp)
-    tfrac = (tf16, tf50, tf84)
-    ext_samp = filter(isfinite, extinction_calc(samp))
-    EBV = isempty(ext_samp) ? (NaN, NaN, NaN) :
-          Tuple(quantile(ext_samp, [0.16, 0.50, 0.84]))
+    tfrac     = (tf16, tf50, tf84)
+    ext_samp  = filter(isfinite, extinction_calc(samp))
+    EBV       = isempty(ext_samp) ? (NaN, NaN, NaN) :
+                Tuple(quantile(ext_samp, [0.16, 0.50, 0.84]))
 
-    sed_path = joinpath(output_dir, "SED", "$bin_idx.png")
+    sed_path    = joinpath(output_dir, "SED",       "$bin_idx.png")
     corner_path = joinpath(output_dir, "posterior", "$bin_idx.png")
 
     println("╔══════════════════════════════════════════════════════╗")
@@ -350,6 +484,16 @@ function query_bin(bin_idx::Int, samples_file::String, fd::FluxData,
         "Non-thermal (Jy)", nT[2], nT[1], nT[3])
     @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
         "Spectral index", alpha[2], alpha[1], alpha[3])
+    if is_curved
+        @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
+            "Curvature (β)", beta[2], beta[1], beta[3])
+    elseif is_ffa
+        @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
+            "τ₀ (FFA)", tau0[2], tau0[1], tau0[3])
+    elseif is_bpl
+        @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
+            "ν_b (GHz)", nu_b[2]/1e9, nu_b[1]/1e9, nu_b[3]/1e9)
+    end
     @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
         "Thermal fraction", tfrac[2], tfrac[1], tfrac[3])
     @printf("║  %-18s %12.4g  [%10.4g, %10.4g]  ║\n",
@@ -357,11 +501,11 @@ function query_bin(bin_idx::Int, samples_file::String, fd::FluxData,
     @printf("║  %-18s %12.4f  [%10.4f, %10.4f]  ║\n",
         "E(B-V)", EBV[2], EBV[1], EBV[3])
     println("╠══════════════════════════════════════════════════════╣")
-    println("║  SED:    ", rpad(isfile(sed_path) ? sed_path : "(not generated)", 44), "║")
+    println("║  SED:    ", rpad(isfile(sed_path)    ? sed_path    : "(not generated)", 44), "║")
     println("║  Corner: ", rpad(isfile(corner_path) ? corner_path : "(not generated)", 44), "║")
     println("╚══════════════════════════════════════════════════════╝")
 
-    return (; T, nT, alpha, tfrac, Ha, EBV, sed_path, corner_path)
+    return (; T, nT, alpha, beta, tau0, nu_b, tfrac, Ha, EBV, sed_path, corner_path)
 end
 
 function query_bin(pixel_col::Int, pixel_row::Int, samples_file::String,
@@ -379,17 +523,23 @@ function all_plots(fd::FluxData, dc::DataCube, hg::HexGrid,
     samples_file::String, output_dir::String;
     mask_poor_bins::Bool=true,
     alpha_width_threshold::Float64=0.5,
-    tfrac_width_threshold::Float64=0.4)
+    tfrac_width_threshold::Float64=0.4,
+    beta_width_threshold::Float64=0.8,
+    tau_width_threshold::Float64=1.0,
+    nu_b_log_width_threshold::Float64=2.0,
+    T_e::Float64=8000.0)
     qmask = mask_poor_bins ?
             compute_quality_mask(samples_file;
-        alpha_width_threshold, tfrac_width_threshold) :
+                alpha_width_threshold, tfrac_width_threshold,
+                beta_width_threshold, tau_width_threshold,
+                nu_b_log_width_threshold) :
             nothing
     spec_vs_frac(samples_file, output_dir)
     ext_vs_ha(samples_file, output_dir)
     plot_labeled_map(samples_file, dc, hg, output_dir; quality_mask=qmask)
     plot_sed(fd, dc.freq, samples_file, output_dir; quality_mask=qmask)
     plot_corner(samples_file, output_dir; quality_mask=qmask)
-    plot_hex_maps(samples_file, dc, hg, output_dir; quality_mask=qmask)
+    plot_hex_maps(samples_file, dc, hg, output_dir; T_e, quality_mask=qmask)
     mag_equip_map(samples_file, fd, dc, hg, output_dir; quality_mask=qmask)
     extinction_map(samples_file, dc, hg, output_dir; quality_mask=qmask)
 end
