@@ -5,7 +5,7 @@ function find_gridsize(header)::Int
     return Int(ceil(image_length / hex_width))
 end
 
-function _hex_geometry_vertex(nx_pixels::Int, ny_pixels::Int, gridsize::Int)
+function hex_geometry_vertex(nx_pixels::Int, ny_pixels::Int, gridsize::Int)
     nx_hex = gridsize
 
     xmin, xmax = 0.0, Float64(nx_pixels)
@@ -25,7 +25,7 @@ end
 function compute_hex_membership(mask::BitMatrix, gridsize::Int)
     ny, nx = size(mask)
 
-    xmin, ymin, sx, sy, nx_hex, ny_hex = _hex_geometry_vertex(nx, ny, gridsize)
+    xmin, ymin, sx, sy, nx_hex, ny_hex = hex_geometry_vertex(nx, ny, gridsize)
 
     nx1, ny1 = nx_hex + 1, ny_hex + 1
     nx2, ny2 = nx_hex, ny_hex

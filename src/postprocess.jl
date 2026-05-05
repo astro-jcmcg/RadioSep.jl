@@ -1,7 +1,7 @@
 using Statistics
 using HDF5
 
-function _read_model_attr(samples_file::String)::String
+function read_model_attr(samples_file::String)::String
     h5open(samples_file, "r") do hdf
         haskey(HDF5.attributes(hdf), "model") ?
             read(HDF5.attributes(hdf)["model"]) : "PowerLaw"
@@ -15,7 +15,7 @@ function compute_quality_mask(samples_file::String;
     tau_width_threshold::Float64=1.0,
     nu_b_log_width_threshold::Float64=2.0)::BitVector
     dataset    = h5open(samples_file, "r") do hdf; read(hdf, "samples"); end
-    model_str  = _read_model_attr(samples_file)
+    model_str  = read_model_attr(samples_file)
     n_hex      = size(dataset, 1)
     has_4th    = size(dataset, 3) == 5
     mask       = trues(n_hex)
@@ -33,7 +33,6 @@ function compute_quality_mask(samples_file::String;
             col4_fin = filter(isfinite, samp[:, 4])
             if !isempty(col4_fin)
                 masked = if model_str == "BrokenPowerLaw"
-                    # ν_b spans decades — assess width in log10 space
                     pos = filter(x -> x > 0, col4_fin)
                     if !isempty(pos)
                         q_log = quantile(log10.(pos), [0.16, 0.84])

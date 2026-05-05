@@ -6,7 +6,7 @@ using Statistics
 using Printf
 using FITSFiles
 
-function _read_samples(samples_file::String)
+function read_samples(samples_file::String)
     h5open(samples_file, "r") do hdf
         read(hdf, "samples")
     end
@@ -32,8 +32,8 @@ end
 
 function plot_sed(fd::FluxData, freq::AbstractVector, samples_file::String, output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset    = _read_samples(samples_file)
-    model_str  = _read_model_attr(samples_file)
+    dataset    = read_samples(samples_file)
+    model_str  = read_model_attr(samples_file)
     n_hex      = size(dataset, 1)
     is_curved  = model_str == "CurvedPowerLaw"
     is_ffa     = model_str == "ffa"
@@ -125,8 +125,8 @@ end
 
 function plot_corner(samples_file::String, output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset   = _read_samples(samples_file)
-    model_str = _read_model_attr(samples_file)
+    dataset   = read_samples(samples_file)
+    model_str = read_model_attr(samples_file)
     n_hex     = size(dataset, 1)
     is_curved = model_str == "CurvedPowerLaw"
     is_ffa    = model_str == "ffa"
@@ -167,7 +167,7 @@ function plot_corner(samples_file::String, output_dir::String;
 end
 
 function spec_vs_frac(samples_file::String, output_dir::String)
-    dataset = _read_samples(samples_file)
+    dataset = read_samples(samples_file)
     n_hex   = size(dataset, 1)
 
     spec  = zeros(n_hex, 3)
@@ -191,7 +191,7 @@ function spec_vs_frac(samples_file::String, output_dir::String)
 end
 
 function ext_vs_ha(samples_file::String, output_dir::String)
-    dataset = _read_samples(samples_file)
+    dataset = read_samples(samples_file)
     n_hex   = size(dataset, 1)
 
     ext = zeros(n_hex, 3)
@@ -220,8 +220,8 @@ function plot_hex_maps(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
     T_e::Float64=8000.0,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset   = _read_samples(samples_file)
-    model_str = _read_model_attr(samples_file)
+    dataset   = read_samples(samples_file)
+    model_str = read_model_attr(samples_file)
     n_hex     = size(dataset, 1)
     is_curved = model_str == "CurvedPowerLaw"
     is_ffa    = model_str == "ffa"
@@ -290,25 +290,25 @@ function plot_hex_maps(samples_file::String, dc::DataCube, hg::HexGrid,
     end
 
     hdr = dc.header
-    _write_fits_map(joinpath(maps_dir, "T.fits"),         T_map,     hdr)
-    _write_fits_map(joinpath(maps_dir, "T_err.fits"),     T_err,     hdr)
-    _write_fits_map(joinpath(maps_dir, "nT.fits"),        nT_map,    hdr)
-    _write_fits_map(joinpath(maps_dir, "nT_err.fits"),    nT_err,    hdr)
-    _write_fits_map(joinpath(maps_dir, "spec.fits"),      spec_map,  hdr)
-    _write_fits_map(joinpath(maps_dir, "spec_err.fits"),  spec_err,  hdr)
-    _write_fits_map(joinpath(maps_dir, "tfrac.fits"),     tfrac_map, hdr)
-    _write_fits_map(joinpath(maps_dir, "tfrac_err.fits"), tfrac_err, hdr)
+    write_fits_map(joinpath(maps_dir, "T.fits"),         T_map,     hdr)
+    write_fits_map(joinpath(maps_dir, "T_err.fits"),     T_err,     hdr)
+    write_fits_map(joinpath(maps_dir, "nT.fits"),        nT_map,    hdr)
+    write_fits_map(joinpath(maps_dir, "nT_err.fits"),    nT_err,    hdr)
+    write_fits_map(joinpath(maps_dir, "spec.fits"),      spec_map,  hdr)
+    write_fits_map(joinpath(maps_dir, "spec_err.fits"),  spec_err,  hdr)
+    write_fits_map(joinpath(maps_dir, "tfrac.fits"),     tfrac_map, hdr)
+    write_fits_map(joinpath(maps_dir, "tfrac_err.fits"), tfrac_err, hdr)
     if is_curved
-        _write_fits_map(joinpath(maps_dir, "beta.fits"),     beta_map, hdr)
-        _write_fits_map(joinpath(maps_dir, "beta_err.fits"), beta_err, hdr)
+        write_fits_map(joinpath(maps_dir, "beta.fits"),     beta_map, hdr)
+        write_fits_map(joinpath(maps_dir, "beta_err.fits"), beta_err, hdr)
     elseif is_ffa
-        _write_fits_map(joinpath(maps_dir, "tau.fits"),     tau_map, hdr)
-        _write_fits_map(joinpath(maps_dir, "tau_err.fits"), tau_err, hdr)
-        _write_fits_map(joinpath(maps_dir, "EM.fits"),      em_map,  hdr)
-        _write_fits_map(joinpath(maps_dir, "EM_err.fits"),  em_err,  hdr)
+        write_fits_map(joinpath(maps_dir, "tau.fits"),     tau_map, hdr)
+        write_fits_map(joinpath(maps_dir, "tau_err.fits"), tau_err, hdr)
+        write_fits_map(joinpath(maps_dir, "EM.fits"),      em_map,  hdr)
+        write_fits_map(joinpath(maps_dir, "EM_err.fits"),  em_err,  hdr)
     elseif is_bpl
-        _write_fits_map(joinpath(maps_dir, "nu_b.fits"),     nu_b_map, hdr)
-        _write_fits_map(joinpath(maps_dir, "nu_b_err.fits"), nu_b_err, hdr)
+        write_fits_map(joinpath(maps_dir, "nu_b.fits"),     nu_b_map, hdr)
+        write_fits_map(joinpath(maps_dir, "nu_b_err.fits"), nu_b_err, hdr)
     end
 end
 
@@ -319,7 +319,7 @@ function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
     scale_height::Float64=0.1,
     disk_inclination::Float64=33.0,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset  = _read_samples(samples_file)
+    dataset  = read_samples(samples_file)
     n_hex    = size(dataset, 1)
     maps_dir = joinpath(output_dir, "maps")
     mkpath(maps_dir)
@@ -344,14 +344,14 @@ function mag_equip_map(samples_file::String, fd::FluxData, dc::DataCube,
         end
     end
 
-    _write_fits_map(joinpath(maps_dir, "mag_eq.fits"),     mag_map, dc.header)
-    _write_fits_map(joinpath(maps_dir, "mag_eq_err.fits"), mag_err, dc.header)
+    write_fits_map(joinpath(maps_dir, "mag_eq.fits"),     mag_map, dc.header)
+    write_fits_map(joinpath(maps_dir, "mag_eq_err.fits"), mag_err, dc.header)
 end
 
 function extinction_map(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset  = _read_samples(samples_file)
+    dataset  = read_samples(samples_file)
     n_hex    = size(dataset, 1)
     maps_dir = joinpath(output_dir, "maps")
     mkpath(maps_dir)
@@ -373,16 +373,16 @@ function extinction_map(samples_file::String, dc::DataCube, hg::HexGrid,
         end
     end
 
-    _write_fits_map(joinpath(maps_dir, "ext.fits"),     ext_map, dc.header)
-    _write_fits_map(joinpath(maps_dir, "ext_err.fits"), ext_err, dc.header)
+    write_fits_map(joinpath(maps_dir, "ext.fits"),     ext_map, dc.header)
+    write_fits_map(joinpath(maps_dir, "ext_err.fits"), ext_err, dc.header)
 end
 
 function plot_labeled_map(samples_file::String, dc::DataCube, hg::HexGrid,
     output_dir::String;
     parameter::Symbol=:tfrac,
     quality_mask::Union{Nothing,AbstractVector{Bool}}=nothing)
-    dataset   = _read_samples(samples_file)
-    model_str = _read_model_attr(samples_file)
+    dataset   = read_samples(samples_file)
+    model_str = read_model_attr(samples_file)
     n_hex     = size(dataset, 1)
     is_ffa    = model_str == "ffa"
     is_bpl    = model_str == "BrokenPowerLaw"
@@ -443,7 +443,7 @@ function query_bin(bin_idx::Int, samples_file::String, fd::FluxData,
     dataset = h5open(samples_file, "r") do hdf
         read(hdf, "samples")
     end
-    model_str = _read_model_attr(samples_file)
+    model_str = read_model_attr(samples_file)
     n_hex     = size(dataset, 1)
     1 <= bin_idx <= n_hex || error("bin_idx $bin_idx out of range 1:$n_hex")
 
@@ -544,7 +544,262 @@ function all_plots(fd::FluxData, dc::DataCube, hg::HexGrid,
     extinction_map(samples_file, dc, hg, output_dir; quality_mask=qmask)
 end
 
-function _write_fits_map(path::String, map::Matrix{Float64}, header)
+function plot_rj_model_maps(rjsamples_file::String, dc::DataCube, hg::HexGrid,
+    output_dir::String;
+    quality_mask::Union{Nothing,AbstractVector{Bool}} = nothing)
+
+    probs   = model_posterior_probs(rjsamples_file)
+    entropy = model_posterior_entropy(rjsamples_file)
+    map_idx = map_model_index(rjsamples_file)
+    n_hex   = size(probs, 1)
+    ny, nx  = dc.header["NAXIS2"], dc.header["NAXIS1"]
+    maps_dir = joinpath(output_dir, "maps")
+    mkpath(maps_dir)
+
+    prob_maps    = [fill(NaN, ny, nx) for _ in 1:N_MODELS]
+    entropy_map  = fill(NaN, ny, nx)
+    map_idx_map  = fill(NaN, ny, nx)
+
+    for i in 1:n_hex
+        quality_mask !== nothing && !quality_mask[i] && continue
+        for px in hg.pixel_members[i]
+            for m in 1:N_MODELS
+                prob_maps[m][px] = probs[i, m]
+            end
+            entropy_map[px] = entropy[i]
+            map_idx_map[px] = Float64(map_idx[i])
+        end
+    end
+
+    for m in 1:N_MODELS
+        write_fits_map(joinpath(maps_dir, "model_prob_$(MODEL_NAMES[m]).fits"),
+                        prob_maps[m], dc.header)
+    end
+    write_fits_map(joinpath(maps_dir, "model_entropy.fits"), entropy_map, dc.header)
+    write_fits_map(joinpath(maps_dir, "model_map.fits"),     map_idx_map, dc.header)
+
+    fig = Figure(size=(900, 700))
+    cmaps = (:Blues, :Oranges, :Greens, :Purples)
+    positions = ((1,1), (1,2), (2,1), (2,2))
+    for (m, (row, col)) in zip(1:N_MODELS, positions)
+        ax = Axis(fig[row, col]; title=MODEL_NAMES[m],
+                  aspect=DataAspect(), xlabel="col", ylabel="row")
+        heatmap!(ax, 1:nx, 1:ny, prob_maps[m]';
+                 nan_color=(:grey, 0.3), colormap=cmaps[m],
+                 colorrange=(0.0, 1.0))
+        Colorbar(fig[row, col+2]; colormap=cmaps[m], limits=(0, 1),
+                 label="P(model)", width=12)
+    end
+    save(joinpath(output_dir, "model_probabilities.png"), fig)
+    empty!(fig)
+
+    fig2 = Figure(size=(600, 500))
+    ax2  = Axis(fig2[1, 1]; title="Model posterior entropy",
+                aspect=DataAspect(), xlabel="col", ylabel="row")
+    hm = heatmap!(ax2, 1:nx, 1:ny, entropy_map'; nan_color=(:grey, 0.3), colormap=:hot)
+    Colorbar(fig2[1, 2]; colormap=:hot, label="H (nats)")
+    save(joinpath(output_dir, "model_entropy.png"), fig2)
+    empty!(fig2)
+    GC.gc()
+end
+
+function plot_rj_sed(fd::FluxData, freq::AbstractVector,
+    rjsamples_file::String, output_dir::String;
+    quality_mask::Union{Nothing,AbstractVector{Bool}} = nothing)
+
+    midx, pshared, p4, _ = read_rj(rjsamples_file)
+    map_idx  = map_model_index(rjsamples_file)
+    n_hex    = size(midx, 1)
+    sed_dir  = joinpath(output_dir, "SED_rj")
+    mkpath(sed_dir)
+
+    x_lo = minimum(freq) * 0.3
+    x_hi = maximum(freq) * 3.0
+    freq_range = 10 .^ range(log10(x_lo), log10(x_hi); length=200)
+
+    all_lo = [fd.dmatrix[i, j] - fd.dnoisematrix[i, j]
+              for i in 1:n_hex, j in eachindex(freq)
+              if isfinite(fd.dmatrix[i, j]) && fd.dmatrix[i, j] > 0]
+    all_hi = [fd.dmatrix[i, j] + fd.dnoisematrix[i, j]
+              for i in 1:n_hex, j in eachindex(freq)
+              if isfinite(fd.dmatrix[i, j])]
+    ha_vals = filter(>(0), fd.dHa)
+    y_lo = isempty(all_lo) ? 1e-10 : max(minimum(all_lo), 1e-10) * 0.3
+    y_hi = isempty(all_hi) ? 1e-5  : max(maximum(all_hi), maximum(ha_vals; init=0.0)) * 3.0
+
+    @showprogress "Plotting RJ SEDs: " for i in 1:n_hex
+        quality_mask !== nothing && !quality_mask[i] && continue
+        m = map_idx[i]
+
+        in_m   = findall(==(m), midx[i, :])
+        isempty(in_m) && continue
+        A_samp  = pshared[i, in_m, 1]
+        Bnt_samp = pshared[i, in_m, 2]
+        α_samp  = pshared[i, in_m, 3]
+        p4_samp = m != PL_IDX ? p4[i, in_m] : nothing
+
+        fig = Figure()
+        ax  = Axis(fig[1, 1];
+            xlabel = "Frequency (Hz)", ylabel = "Flux Density (Jy)",
+            xscale = log10, yscale = log10,
+            limits = (x_lo, x_hi, y_lo, y_hi),
+            title  = "Bin $i — MAP model: $(MODEL_NAMES[m])")
+
+        errorbars!(ax, freq, fd.dmatrix[i, :], fd.dnoisematrix[i, :]; color=:black)
+        scatter!(ax,  freq, fd.dmatrix[i, :]; color=:black)
+        errorbars!(ax, [1e9], [fd.dHa[i]], [0.5 * fd.dHa[i]];
+            color=:red, whiskerwidth=8)
+        scatter!(ax, [1e9], [fd.dHa[i]]; color=:red)
+
+        draw_idx = rand(1:length(in_m), min(250, length(in_m)))
+        for k in draw_idx
+            T   = A_samp[k]
+            nT  = Bnt_samp[k]
+            α   = α_samp[k]
+            T > 0 && lines!(ax, freq_range, thermal(T, freq_range);
+                             color=(:red, 0.0075), linewidth=10)
+            if m == CPL_IDX && nT > 0
+                lines!(ax, freq_range,
+                    non_thermal_curved(nT, α, p4_samp[k], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            elseif m == FFA_IDX && nT > 0
+                lines!(ax, freq_range,
+                    non_thermal_abs(nT, α, p4_samp[k], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            elseif m == BPL_IDX && nT > 0
+                lines!(ax, freq_range,
+                    non_thermal_broken(nT, α, p4_samp[k], freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            elseif nT > 0
+                lines!(ax, freq_range, non_thermal(nT, α, freq_range);
+                    color=(:blue, 0.0075), linewidth=10)
+            end
+        end
+
+        best_T   = median(A_samp)
+        best_nT  = median(Bnt_samp)
+        best_α   = median(α_samp)
+        if m == CPL_IDX
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_α, median(p4_samp), freq_range, Ref(CurvedPowerLaw()));
+                color=:black)
+        elseif m == FFA_IDX
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_α, median(p4_samp), freq_range, Ref(ffa()));
+                color=:black)
+        elseif m == BPL_IDX
+            lines!(ax, freq_range,
+                sed.(best_T, best_nT, best_α, median(p4_samp), freq_range, Ref(BrokenPowerLaw()));
+                color=:black)
+        else
+            lines!(ax, freq_range, sed.(best_T, best_nT, best_α, freq_range); color=:black)
+        end
+
+        save(joinpath(sed_dir, "$i.png"), fig)
+        empty!(fig)
+        GC.gc()
+    end
+end
+
+function plot_rj_hex_maps(rjsamples_file::String, fd::FluxData,
+    dc::DataCube, hg::HexGrid, output_dir::String;
+    T_e::Float64 = 8000.0,
+    quality_mask::Union{Nothing,AbstractVector{Bool}} = nothing)
+
+    midx, pshared, p4, _ = read_rj(rjsamples_file)
+    n_hex    = size(midx, 1)
+    ny, nx   = dc.header["NAXIS2"], dc.header["NAXIS1"]
+    maps_dir = joinpath(output_dir, "maps")
+    mkpath(maps_dir)
+
+    T_map     = fill(NaN, ny, nx);  T_err     = fill(NaN, ny, nx)
+    nT_map    = fill(NaN, ny, nx);  nT_err    = fill(NaN, ny, nx)
+    spec_map  = fill(NaN, ny, nx);  spec_err  = fill(NaN, ny, nx)
+    tfrac_map = fill(NaN, ny, nx);  tfrac_err = fill(NaN, ny, nx)
+    tau_map   = fill(NaN, ny, nx);  tau_err   = fill(NaN, ny, nx)
+    em_map    = fill(NaN, ny, nx);  em_err    = fill(NaN, ny, nx)
+    beta_map  = fill(NaN, ny, nx);  beta_err  = fill(NaN, ny, nx)
+    nu_b_map  = fill(NaN, ny, nx);  nu_b_err  = fill(NaN, ny, nx)
+
+    for i in 1:n_hex
+        quality_mask !== nothing && !quality_mask[i] && continue
+
+        qT    = quantile(pshared[i, :, 1], [0.16, 0.50, 0.84])
+        qnT   = quantile(pshared[i, :, 2], [0.16, 0.50, 0.84])
+        qspec = quantile(pshared[i, :, 3], [0.16, 0.50, 0.84])
+
+        frac  = pshared[i, :, 1] ./ (pshared[i, :, 1] .+ pshared[i, :, 2])
+        qfrac = quantile(filter(isfinite, frac), [0.16, 0.50, 0.84])
+
+        for m in [CPL_IDX, FFA_IDX, BPL_IDX]
+            in_m  = findall(==(m), midx[i, :])
+            isempty(in_m) && continue
+            p4_m  = filter(isfinite, p4[i, in_m])
+            isempty(p4_m) && continue
+            qp4   = quantile(p4_m, [0.16, 0.50, 0.84])
+            if m == CPL_IDX
+                for px in hg.pixel_members[i]
+                    beta_map[px] = qp4[2]; beta_err[px] = (qp4[3] - qp4[1]) / 2
+                end
+            elseif m == FFA_IDX
+                em_samples = emission_measure_calc(p4_m; T_e)
+                qem = quantile(em_samples, [0.16, 0.50, 0.84])
+                for px in hg.pixel_members[i]
+                    tau_map[px] = qp4[2]; tau_err[px] = (qp4[3] - qp4[1]) / 2
+                    em_map[px]  = qem[2]; em_err[px]  = (qem[3] - qem[1]) / 2
+                end
+            elseif m == BPL_IDX
+                for px in hg.pixel_members[i]
+                    nu_b_map[px] = qp4[2]; nu_b_err[px] = (qp4[3] - qp4[1]) / 2
+                end
+            end
+        end
+
+        for px in hg.pixel_members[i]
+            T_map[px]     = qT[2];    T_err[px]     = (qT[3]    - qT[1])    / 2
+            nT_map[px]    = qnT[2];   nT_err[px]    = (qnT[3]   - qnT[1])   / 2
+            spec_map[px]  = qspec[2]; spec_err[px]  = (qspec[3]  - qspec[1]) / 2
+            tfrac_map[px] = qfrac[2]; tfrac_err[px] = (qfrac[3]  - qfrac[1]) / 2
+        end
+    end
+
+    hdr = dc.header
+    write_fits_map(joinpath(maps_dir, "T.fits"),         T_map,    hdr)
+    write_fits_map(joinpath(maps_dir, "T_err.fits"),     T_err,    hdr)
+    write_fits_map(joinpath(maps_dir, "nT.fits"),        nT_map,   hdr)
+    write_fits_map(joinpath(maps_dir, "nT_err.fits"),    nT_err,   hdr)
+    write_fits_map(joinpath(maps_dir, "spec.fits"),      spec_map, hdr)
+    write_fits_map(joinpath(maps_dir, "spec_err.fits"),  spec_err, hdr)
+    write_fits_map(joinpath(maps_dir, "tfrac.fits"),     tfrac_map, hdr)
+    write_fits_map(joinpath(maps_dir, "tfrac_err.fits"), tfrac_err, hdr)
+    write_fits_map(joinpath(maps_dir, "beta.fits"),      beta_map, hdr)
+    write_fits_map(joinpath(maps_dir, "beta_err.fits"),  beta_err, hdr)
+    write_fits_map(joinpath(maps_dir, "tau.fits"),       tau_map,  hdr)
+    write_fits_map(joinpath(maps_dir, "tau_err.fits"),   tau_err,  hdr)
+    write_fits_map(joinpath(maps_dir, "EM.fits"),        em_map,   hdr)
+    write_fits_map(joinpath(maps_dir, "EM_err.fits"),    em_err,   hdr)
+    write_fits_map(joinpath(maps_dir, "nu_b.fits"),      nu_b_map, hdr)
+    write_fits_map(joinpath(maps_dir, "nu_b_err.fits"),  nu_b_err, hdr)
+end
+
+function all_plots_rj(fd::FluxData, dc::DataCube, hg::HexGrid,
+    rjsamples_file::String, output_dir::String;
+    mask_poor_bins::Bool          = true,
+    min_map_model_prob::Float64   = 0.5,
+    alpha_width_threshold::Float64 = 0.5,
+    tfrac_width_threshold::Float64 = 0.4,
+    T_e::Float64                  = 8000.0)
+
+    qmask = mask_poor_bins ?
+            rj_quality_mask(rjsamples_file;
+                min_map_model_prob, alpha_width_threshold, tfrac_width_threshold) :
+            nothing
+    plot_rj_model_maps(rjsamples_file, dc, hg, output_dir; quality_mask=qmask)
+    plot_rj_sed(fd, dc.freq, rjsamples_file, output_dir; quality_mask=qmask)
+    plot_rj_hex_maps(rjsamples_file, fd, dc, hg, output_dir; T_e, quality_mask=qmask)
+end
+
+function write_fits_map(path::String, map::Matrix{Float64}, header)
     data_out = permutedims(map, (2, 1))
     isfile(path) && rm(path)
     hdus = FITSFiles.HDU[FITSFiles.HDU(data_out, header)]

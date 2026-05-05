@@ -15,7 +15,7 @@ function import_datacube(filelocation::String, noise_dict::Dict{String,Float64})
 
     planes = map(maps) do f
         raw = fits(joinpath(filelocation, f))[1].data
-        _squeeze_to_2d(raw)
+        squeeze_to_2d(raw)
     end
 
     dcube = cat(planes...; dims=3)
@@ -28,13 +28,13 @@ end
 function load_ha(filelocation::String, ha_noise::Float64)::HaData
     path = joinpath(filelocation, "Ha.fits")
     hdu = fits(path)[1]
-    raw = _squeeze_to_2d(hdu.data)
+    raw = squeeze_to_2d(hdu.data)
     scaled = Float64.(raw) .* (1.0 / 1.5)^(-0.1)
     bcf = beam_correction_factor(hdu.cards)
     return HaData(scaled, ha_noise, bcf)
 end
 
-function _squeeze_to_2d(arr::AbstractArray)
+function squeeze_to_2d(arr::AbstractArray)
     d = ndims(arr)
     while d > 2 && size(arr, d) == 1
         arr = selectdim(arr, d, 1)

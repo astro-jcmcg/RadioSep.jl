@@ -55,6 +55,8 @@ include("model.jl")
 include("mcmc.jl")
 include("equipartition.jl")
 include("postprocess.jl")
+include("rjmcmc.jl")
+include("rjpostprocess.jl")
 include("plotting.jl")
 
 export DataCube, HaData, HexGrid, FluxData
@@ -70,6 +72,12 @@ export thermal_frac_percentiles, thermal_frac_median, extinction_calc, compute_q
 export plot_sed, plot_corner, spec_vs_frac, ext_vs_ha
 export plot_hex_maps, mag_equip_map, extinction_map, all_plots
 export plot_labeled_map, query_bin
+
+export RJConfig, run_rjmcmc_hex
+export model_posterior_probs, map_model_index, model_posterior_entropy
+export marginal_param_samples, conditional_param4_samples
+export rj_quality_mask, rj_diagnostics_summary
+export plot_rj_model_maps, plot_rj_sed, all_plots_rj
 
 function complete_run(filelocation::String, noise_dict::Dict{String,Float64},
     output_dir::String;
@@ -87,6 +95,36 @@ function complete_run(filelocation::String, noise_dict::Dict{String,Float64},
 end
 
 export complete_run
+
+function sep_bayes_rj(filelocation::String, noise_dict::Dict{String,Float64},
+    output_dir::String;
+    threshold::Float64          = 5.0,
+    fill_factor::Float64        = 0.5,
+    config::RJConfig            = RJConfig(),
+    mask_poor_bins::Bool        = true,
+    min_map_model_prob::Float64 = 0.5,
+    alpha_width_threshold::Float64 = 0.5,
+    tfrac_width_threshold::Float64 = 0.4,
+    T_e::Float64                = 8000.0)
+
+    dc   = import_datacube(filelocation, noise_dict)
+    ha   = load_ha(filelocation, noise_dict["Ha.fits"])
+    mask = gen_mask(dc; threshold)
+    gs   = find_gridsize(dc.header)
+    hg   = build_hex_grid(mask, gs; fill_factor)
+    fd   = recover_fluxes(dc, ha, hg, mask)
+
+    run_rjmcmc_hex(fd, dc.freq; config, output_path=output_dir)
+
+    rjfile = joinpath(output_dir, "rjsamples.h5")
+    all_plots_rj(fd, dc, hg, rjfile, output_dir;
+        mask_poor_bins, min_map_model_prob,
+        alpha_width_threshold, tfrac_width_threshold, T_e)
+
+    return dc, ha, hg, fd
+end
+
+export sep_bayes_rj
 
 function sep_bayes(filelocation::String, noise_dict::Dict{String,Float64},
     output_dir::String;
